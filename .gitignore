@@ -30,3 +30,6 @@ vr/.cache/
 # ---- macOS ----
 .DS_Store
 dist-astock/
+
+# ---- 本地运行时日志 ----
+.vibe-astock-server.log
