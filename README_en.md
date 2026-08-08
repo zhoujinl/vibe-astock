@@ -215,19 +215,20 @@ MIMO_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
 MIMO_MODEL=mimo-v2.5-pro
 ```
 
-**② You only have a Claude / Codex subscription and no API key**: use the CLI you are already
+**② You only have a Codex / Claude subscription and no API key**: use the CLI you are already
 logged into on this machine. No key needed.
 
 ```bash
-VIBE_LLM_CLI=claude .venv/bin/python server.py
+# Codex CLI / skill is the default review backend, running under workspace-write sandbox.
+# To force it explicitly: VIBE_LLM_CLI=codex .venv/bin/python server.py
 ```
 
-> ⚠️ To run a CLI **other than `claude`** on the server, you also have to set
-> `VIBE_ALLOW_UNSAFE_CLI=<the same one>` explicitly. Not opening that automatically is deliberate:
-> it would also open up "ask the AI" in the browser, and that path puts fetched news text straight
-> into the prompt, which is a far larger injection surface than the review itself. The `claude`
-> branch runs with `--disallowedTools`, which is enough for one-off questions.
-> Running the review on its own with `python main.py` does not need the second switch.
+> ⚠️ Codex is now allowed by default. To also open auto-approving CLIs such as qwen / deepseek,
+> you still have to set `VIBE_ALLOW_UNSAFE_CLI=<the same one>` explicitly. Not opening those
+> automatically is deliberate: it would also open up "ask the AI" in the browser, and that path
+> puts fetched news text straight into the prompt, which is a far larger injection surface than
+> the review itself. The `codex` branch now runs review prompts under `workspace-write`; `claude`
+> no longer auto-routes. Running the review on its own with `python main.py` does not need the second switch.
 
 Run it:
 
@@ -256,8 +257,8 @@ Data lives in `~/.duanxian-agents/` (reviews / heat / cache); the market-data ta
 | Variable | Default | What it does |
 |---|---|---|
 | `VIBE_PORT` | `8910` | Backend port |
-| `VIBE_LLM_CLI` | unset | Use a local CLI as the LLM (`claude` / `codex` …); set this and you need no API key |
-| `VIBE_ALLOW_UNSAFE_CLI` | unset | Allow CLIs other than `claude`, comma-separated (see the note above) |
+| `VIBE_LLM_CLI` | unset | Use a local CLI as the LLM (`codex` / `claude` …); set this and you need no API key |
+| `VIBE_ALLOW_UNSAFE_CLI` | unset | Allow auto-approving CLIs, comma-separated; `codex` is already allowed by default (see the note above) |
 | `VIBE_ASTOCK_PROMPTS` | `~/.vibe-astock/prompts_local.py` | Swap in another analysis style (see "Custom analysis style") |
 | `VIBE_ALLOW_HOSTS` | unset | Add your domain here when serving under one, otherwise write requests get a 403 |
 | `VIBE_MARKET_PROXY` | unset | Set to `1` when Eastmoney is reachable **only** through your proxy. Same as `VR_DATA_PROXY=1`; either works |

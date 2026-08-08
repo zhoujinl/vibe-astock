@@ -177,16 +177,18 @@ MIMO_BASE_URL=https://token-plan-cn.xiaomimimo.com/v1
 MIMO_MODEL=mimo-v2.5-pro
 ```
 
-**② 只有 Claude / Codex 订阅、没有 API key**：走本机已登录的 CLI，免 key。
+**② 只有 Codex / Claude 订阅、没有 API key**：走本机已登录的 CLI，免 key。
 
 ```bash
-VIBE_LLM_CLI=claude .venv/bin/python server.py
+# 默认走 Codex CLI / skill，workspace-write 沙箱；不填也行。
+# 想显式指定：VIBE_LLM_CLI=codex .venv/bin/python server.py
 ```
 
-> ⚠️ 在 server 上跑 **claude 以外**的 CLI，还要显式加 `VIBE_ALLOW_UNSAFE_CLI=<同一个>`。
-> 不自动放开是有意的：那会连「网页里问 AI」一起放开，而那条路会把抓来的外部新闻原文
-> 塞进 prompt，注入面比复盘大得多。`claude` 分支带 `--disallowedTools`，做一次性问答够用。
-> 用 `python main.py` 独立跑复盘则不需要第二个开关。
+> ⚠️ 默认白名单已包含 Codex；若要放开 qwen / deepseek 等自动批准 CLI，
+> 仍要显式加 `VIBE_ALLOW_UNSAFE_CLI=<同一个>`。
+> 不自动放开其余 CLI 是有意的：那会连「网页里问 AI」一起放开，而那条路会把抓来的外部新闻原文
+> 塞进 prompt，注入面比复盘大得多。`codex` 分支现在以 `workspace-write` 执行复盘 prompt，
+> 不再自动走 Claude。用 `python main.py` 独立跑复盘则不需要第二个开关。
 
 跑起来：
 
@@ -212,8 +214,8 @@ VIBE_LLM_CLI=claude .venv/bin/python server.py
 | 变量 | 默认 | 作用 |
 |---|---|---|
 | `VIBE_PORT` | `8910` | 后端端口 |
-| `VIBE_LLM_CLI` | 未设 | 用本机 CLI 当 LLM（`claude` / `codex` …），设了就不需要 API key |
-| `VIBE_ALLOW_UNSAFE_CLI` | 未设 | 放开 `claude` 以外的 CLI，逗号分隔（见上面那条提醒） |
+| `VIBE_LLM_CLI` | 未设 | 用本机 CLI 当 LLM（默认 `codex` / `claude` …），设了就不需要 API key |
+| `VIBE_ALLOW_UNSAFE_CLI` | 未设 | 放开自动批准 CLI，逗号分隔（Codex 已默认放行，见上面那条提醒） |
 | `VIBE_ASTOCK_PROMPTS` | `~/.vibe-astock/prompts_local.py` | 换一套分析口径（见「自定义分析口径」） |
 | `VIBE_ALLOW_HOSTS` | 未设 | 挂到域名下访问时把域名加进来，否则写操作 403 |
 | `VIBE_MARKET_PROXY` | 未设 | 东财在你这儿**只能经代理**才连得上时设 `1`。等同于 `VR_DATA_PROXY=1`，设哪个都行 |
