@@ -26,6 +26,7 @@ const AUTHOR = "Simon 林";
 // 复盘看板本身由 agent 驱动（带 🤖 角标），其余是它的分项数据。
 const REVIEW_NAV = [
   { to: "/agent/review", icon: Swords, label: "复盘看板", agent: true },
+  { to: "/ask", icon: Bot, label: "AI 提问" },
   { to: "/daily-review", icon: Activity, label: "盘面数据" },
   { to: "/first-board", icon: Flame, label: "首板分析" },
   { to: "/heat", icon: CalendarRange, label: "近5天热度" },

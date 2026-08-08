@@ -156,7 +156,6 @@ export function AgentReview() {
   const [dates, setDates] = useState<string[]>([]);   // 跑过复盘的交易日（历史入口）
   const [missing, setMissing] = useState<string>("");  // 选了某天但那天没跑过
   const [err, setErr] = useState("");
-  // 「已复盘/还没收盘」这类不是错误、是正常告知，跟 err 分开显示
   const [notice, setNotice] = useState("");
   // polling: 防重入（React state 在同一轮渲染里读到的是旧值，双击能穿过去）
   // timer / alive: 卸载后停掉轮询，别再 setState

@@ -4,6 +4,7 @@ import { AgentReview } from "@/pages/AgentReview";
 import { DailyReview } from "@/pages/DailyReview";
 import { FirstBoard } from "@/pages/FirstBoard";
 import { AgentWeekly } from "@/pages/AgentWeekly";
+import { Ask } from "@/pages/Ask";
 import { Settings } from "@/pages/Settings";
 
 // basename 跟着构建时的 --base 走，这样挂在子路径下内部跳转才不会掉回站点根目录
@@ -13,6 +14,7 @@ export const router = createBrowserRouter([
     children: [
       { path: "/", element: <Navigate to="/agent/review" replace /> },
       { path: "/agent/review", element: <AgentReview /> },
+      { path: "/ask", element: <Ask /> },
       { path: "/daily-review", element: <DailyReview /> },
       { path: "/first-board", element: <FirstBoard /> },
       { path: "/heat", element: <AgentWeekly /> },

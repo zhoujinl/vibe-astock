@@ -52,13 +52,12 @@ export const PROVIDER_BASE: Partial<Record<ProviderId, string>> = {
 
 export const aiModels: ModelConfig[] = [
   // —— 订阅版（免 API key，调本机已登录的 CLI）——
+  { id: "codex", name: "Codex", description: "OpenAI Codex 订阅（需 codex login 登录，默认工作区写保护）", provider: "cli-codex" },
   { id: "claude-code", name: "Claude Code", description: "用本机 Claude 订阅（已限制文件/命令工具）", provider: "cli-claude" },
   { id: "qwen-code", name: "Qwen Code", description: "通义 Qwen Code 订阅", provider: "cli-qwen",
     autoApprove: true, blocked: "自动批准（--yolo）" },
   { id: "deepseek-cli", name: "DeepSeek CLI", description: "DeepSeek 本机 CLI 订阅", provider: "cli-deepseek",
     autoApprove: true, blocked: "自动批准（exec --auto）" },
-  { id: "codex", name: "Codex", description: "OpenAI Codex 订阅（需 codex login 登录）", provider: "cli-codex",
-    autoApprove: true, blocked: "无沙箱限制" },
   { id: "opencode", name: "OpenCode", description: "OpenCode 订阅", provider: "cli-opencode",
     comingSoon: true, autoApprove: true, blocked: "自动批准" },
   { id: "cursor-agent", name: "Cursor Agent", description: "Cursor Agent 订阅", provider: "cli-cursor",
@@ -96,7 +95,7 @@ export const cliKindOf = (p: ProviderId): string => (isCliProvider(p) ? p.slice(
 
 export interface CliStatus {
   kind: string;
-  allowed: boolean;    // 服务端放行了吗（默认只有 claude；`VIBE_ALLOW_UNSAFE_CLI` 可放开）
+  allowed: boolean;    // 服务端放行了吗（默认包含 codex；`VIBE_ALLOW_UNSAFE_CLI` 可放开其余）
   installed: boolean;  // 本机装了这个命令吗
   reason: string | null;
 }

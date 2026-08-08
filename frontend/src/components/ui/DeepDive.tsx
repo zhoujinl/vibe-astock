@@ -18,6 +18,24 @@ const TOOL_LABEL: Record<string, string> = {
   query_global_stock: "查外盘",
 };
 
+const TOOL_SKILLS: Record<string, string> = {
+  query_reports: "report-search（研报搜索技能）",
+  query_news: "news-search（新闻搜索技能）",
+};
+
+function usedSkillLabels(tools: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tools) {
+    const s = TOOL_SKILLS[t];
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  }
+  return out;
+}
+
 // ---------- 本地存档 ----------
 const STORE_KEY = "vr-deepdive";
 const KEEP_DAYS = 5; // 只保留最近 5 个不同交易日的分析
@@ -237,6 +255,15 @@ export function DeepDivePanel({ dd, stockKey, colSpan, noteTitle, onRerun }: Pan
               {(dd.tools[stockKey] || []).map((t) => (
                 <span key={t} className="rounded-full border border-secondary/40 bg-secondary/10 px-2 py-0.5">{t}</span>
               ))}
+              {(() => {
+                const skills = usedSkillLabels(dd.tools[stockKey] || []);
+                if (!skills.length) return null;
+                return (
+                  <span className="text-[10px] text-muted-foreground/80">
+                    已使用 Skills：{skills.join("、")}
+                  </span>
+                );
+              })()}
               {isRunning && <Loader2 className="h-3 w-3 animate-spin" />}
               {!isRunning && text && (
                 <>
