@@ -1558,8 +1558,10 @@ class TestVrDegradeAndCliRisk:
         models = pathlib.Path("frontend/src/lib/ai-models.ts").read_text(encoding="utf-8")
         assert "autoApprove?" in models, "ModelConfig 要有 autoApprove 字段"
         entries = _cli_model_entries()
-        for pid in ("cli-qwen", "cli-deepseek", "cli-codex"):
+        for pid in ("cli-qwen", "cli-deepseek"):
             assert "autoApprove: true" in entries[pid], f"{pid} 是自动批准，必须标出来"
+        assert "autoApprove" not in entries["cli-codex"], \
+            "codex 现在是默认安全 CLI，不该标成自动批准"
         assert "autoApprove" not in entries["cli-claude"], \
             "claude 带工具黑名单，不该标成自动批准"
 
@@ -1577,12 +1579,13 @@ class TestVrDegradeAndCliRisk:
 
 
 class TestCliRiskDecision:
-    """**只保留 `cli-claude` 可选** —— 其余 CLI 必须显式放开才可用"""
+    """**默认只放行安全 CLI** —— Codex / Claude 可选，其余自动批准 CLI 仍须显式放开"""
 
-    def test_only_claude_cli_is_selectable(self):
+    def test_only_safe_default_cli_is_selectable(self):
         entries = _cli_model_entries()
-        assert "blocked" not in entries["cli-claude"], "claude 是安全的那个，不该禁"
-        for pid in ("cli-qwen", "cli-deepseek", "cli-codex",
+        assert "blocked" not in entries["cli-claude"], "claude 仍是可选的安全 CLI"
+        assert "blocked" not in entries["cli-codex"], "codex 已加入默认白名单"
+        for pid in ("cli-qwen", "cli-deepseek",
                     "cli-opencode", "cli-cursor", "cli-kimi"):
             assert "blocked:" in entries[pid], f"{pid} 是自动批准/无沙箱，必须禁用"
 
@@ -1667,17 +1670,16 @@ def _live_cli_runtime():
 
 
 class TestBlockedCliRemovedFromRuntime:
-    """第 7 轮 ：禁用必须在**服务端**生效，不是只在前端灰按钮"""
+    """第 7 轮 ：默认只保留安全 CLI；非安全自动批准 CLI 必须在**服务端**生效"""
 
-    def test_unsafe_kinds_are_gone_from_cli_defs(self):
-        """能力必须在运行时字典里就不存在"""
+    def test_safe_defaults_survive_in_runtime(self):
+        """codex / claude 这类默认安全 CLI 保留在运行时字典里"""
         import server
 
         cli_runtime = _live_cli_runtime()
-        assert server._ALLOWED_CLI_KINDS, "白名单不能是空的（那会把 claude 也摘掉）"
-        for kind in ("qwen", "deepseek", "codex"):
-            assert kind not in cli_runtime._CLI_DEFS, f"{kind} 还在运行时字典里 → 仍可被调用"
-        assert "claude" in cli_runtime._CLI_DEFS, "claude 是保留的那个，不能连它一起摘"
+        assert server._ALLOWED_CLI_KINDS >= {"claude", "codex"}, "默认白名单至少保留 claude 与 codex"
+        for kind in ("claude", "codex"):
+            assert kind in cli_runtime._CLI_DEFS, f"{kind} 还在运行时字典里 → 仍可被调用"
 
     def test_both_module_copies_are_stripped(self):
         """两份拷贝都得摘干净 —— 只摘一份就等于没摘。"""
@@ -1693,15 +1695,15 @@ class TestBlockedCliRemovedFromRuntime:
             leftover = set(m._CLI_DEFS) - set(server._ALLOWED_CLI_KINDS)
             assert not leftover, f"{m.__name__} 这份还剩 {sorted(leftover)}"
 
-    def test_every_cli_entry_point_refuses(self):
-        """摘掉 dict 后，三个入口（detect/run/run_stream）全部拒绝 —— 这才是「单一收口」的意义。"""
+    def test_every_unsafe_cli_entry_point_refuses(self):
+        """摘掉 dict 后，非安全 CLI 的三个入口全部拒绝 —— 这才是「单一收口」的意义。"""
         cli_runtime = _live_cli_runtime()
 
-        assert cli_runtime.detect_cli("codex") is None      # vr/app.py 据此返回 400
-        assert "codex" not in cli_runtime.supported_kinds()
+        assert cli_runtime.detect_cli("qwen") is None      # vr/app.py 据此返回 400
+        assert "qwen" not in cli_runtime.supported_kinds()
         for fn in (cli_runtime.run_cli, cli_runtime.run_cli_stream):
             with pytest.raises(RuntimeError):
-                out = fn("codex", "sys", "user")
+                out = fn("qwen", "sys", "user")
                 list(out)  # run_cli_stream 是生成器，要迭代才会执行
 
     def test_no_other_call_path_bypasses_the_dict(self):
@@ -1745,7 +1747,7 @@ class TestBlockedCliRemovedFromRuntime:
 
         import server
 
-        assert server._ALLOWED_CLI_KINDS == frozenset({"claude"})
+        assert server._ALLOWED_CLI_KINDS == frozenset({"claude", "codex"})
         src = inspect.getsource(server._disable_unsafe_clis)
         assert "not in _ALLOWED_CLI_KINDS" in src, "要按白名单摘，不能按黑名单摘"
 
@@ -1904,7 +1906,7 @@ class TestUnsafeCliOptIn:
 
         monkeypatch.delenv("VIBE_ALLOW_UNSAFE_CLI", raising=False)
         assert server._opted_in_clis() == frozenset()
-        assert server._SAFE_CLI_KINDS == frozenset({"claude"})
+        assert server._SAFE_CLI_KINDS == frozenset({"claude", "codex"})
 
     def test_env_parsing(self, monkeypatch):
         import server
@@ -2880,7 +2882,8 @@ class TestCliBackendPreflight:
             with pytest.raises(RuntimeError) as ei:
                 cli_llm._check_available("codex")
             msg = str(ei.value)
-            assert "VIBE_ALLOW_UNSAFE_CLI=codex" in msg, "要说清该设哪个开关"
+            assert "请确认服务端已把 codex 放进 CLI 白名单" in msg, \
+                "codex 属于默认安全 CLI，不能叫用户去开 VIBE_ALLOW_UNSAFE_CLI"
             assert "未检测到" not in msg, "别报「未检测到」——那是骗人的错"
             assert "main.py" in msg, "要给出另一条路（独立进程跑）"
         finally:
@@ -2932,7 +2935,7 @@ class TestCliBackendPreflight:
 
             with pytest.raises(RuntimeError) as blocked:
                 cli_llm._check_available("codex")
-            assert "VIBE_ALLOW_UNSAFE_CLI=codex" in str(blocked.value)
+            assert "请确认服务端已把 codex 放进 CLI 白名单" in str(blocked.value)
 
             with pytest.raises(RuntimeError) as absent:
                 cli_llm._check_available("qwen")

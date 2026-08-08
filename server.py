@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -36,6 +37,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _DIST = os.path.join(_HERE, "frontend", "dist")
 _REVIEW_DIR = os.path.expanduser("~/.duanxian-agents/reviews")
 _WK_DIR = os.path.expanduser("~/.duanxian-agents/weekly")
+_SKILLS_DIR = Path.home() / ".codex" / "skills"
 os.makedirs(_REVIEW_DIR, exist_ok=True)
 os.makedirs(_WK_DIR, exist_ok=True)
 # 允许写操作（POST/DELETE）的 Host。默认只认本机；挂到域名下访问时，用
@@ -52,16 +54,13 @@ app = FastAPI(title="短线每日复盘")
 # `vr/` 原样来自开源的 Vibe-Research，日后拉更新就是一次纯拷贝。改成包内相对
 # import 会让每次同步都变成手工 merge。
 
-
 def _alert(msg: str) -> None:
     """必达的告警输出"""
     import sys
 
     print(msg, file=sys.stderr, flush=True)
 
-
 _VR_PATH_RES: list[re.Pattern] = []
-
 
 def _merge_vr_routes() -> int:
     """把 `vr/` 的路由并进本 app。返回并入条数；失败不影响本仓库自有功能。"""
@@ -92,7 +91,6 @@ def _merge_vr_routes() -> int:
     except Exception as exc:  # noqa: BLE001  VR 挂了不该让复盘/交易日志也用不了
         _alert(f"⚠️ VR 后端并入失败（那 7 个分栏会不可用）：{type(exc).__name__}: {exc}")
         return 0
-
 
 def _guard_vr_userdata() -> None:
     """启动时给 VR 的**不可再生用户数据**留一份备份"""
@@ -139,15 +137,12 @@ def _guard_vr_userdata() -> None:
     except Exception as exc:  # noqa: BLE001  备份失败要出声，但不阻断启动
         _alert(f"⚠️ VR 持仓备份失败（{type(exc).__name__}）：{vr_home}/portfolio.good-*.json")
 
-
-_SAFE_CLI_KINDS = frozenset({"claude"})
-
+_SAFE_CLI_KINDS = frozenset({"claude", "codex"})
 
 def _opted_in_clis() -> frozenset[str]:
     """`VIBE_ALLOW_UNSAFE_CLI=qwen,deepseek` —— 运行服务的人**显式**放开的"""
     raw = os.environ.get("VIBE_ALLOW_UNSAFE_CLI", "")
     return frozenset(k.strip() for k in raw.split(",") if k.strip())
-
 
 _ALLOWED_CLI_KINDS = _SAFE_CLI_KINDS | _opted_in_clis()
 
@@ -162,7 +157,6 @@ _ALL_CLI_BINS: dict[str, list[str]] = {}
 
 from duanxian.cli_llm import _BINS_ATTR_NAME as _BINS_ATTR  # 单一来源，见那边注释
 
-
 def _cli_runtime_modules() -> list:
     """所有**已加载的** cli_runtime 模块对象"""
     mods = [m for name, m in list(sys.modules.items())
@@ -175,7 +169,6 @@ def _cli_runtime_modules() -> list:
     except Exception:              # noqa: BLE001  这一版可能根本没带这个文件
         return []
     return [_cr] if hasattr(_cr, "_CLI_DEFS") else []
-
 
 def _disable_unsafe_clis() -> list[str]:
     """把不在白名单里的 CLI 从**每一份** CLI 运行时字典摘掉，返回实际摘掉的。"""
@@ -210,14 +203,12 @@ def _disable_unsafe_clis() -> list[str]:
         _alert(f"⚠️ vr/ 上游新增了 CLI {unknown}，已按白名单摘掉。确认安全后再加进 _ALLOWED_CLI_KINDS")
     return sorted(removed)
 
-
 def _add_vr_to_path() -> None:
     """只把 `vr/` 放进 sys.path，不挂它的路由"""
     import sys
     vr_dir = os.path.join(_HERE, "vr")
     if os.path.isdir(vr_dir) and vr_dir not in sys.path:
         sys.path.insert(0, vr_dir)
-
 
 _VR_ROUTES = _merge_vr_routes()
 def _pin_pool_to_settled_session() -> int:
@@ -260,7 +251,6 @@ def _pin_pool_to_settled_session() -> int:
     live._pool_unpinned = orig
     return 1
 
-
 _POOL_PINNED = _pin_pool_to_settled_session()
 _guard_vr_userdata()
 _DISABLED_CLIS = _disable_unsafe_clis()
@@ -271,10 +261,8 @@ _VR_API_KEY = os.environ.get("VR_API_KEY", "").strip()
 # 但 VR 的 handler **我们不改**（要保持上游原样）→ 只能在 middleware 层补。
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 
-
 def _is_vr_path(path: str) -> bool:
     return any(rx.match(path) for rx in _VR_PATH_RES)
-
 
 @app.middleware("http")
 async def _vr_guard(request: Request, call_next):
@@ -296,12 +284,10 @@ _job = {
 
 _JOB_TIMEOUT = 15 * 60
 
-
 def _job_stuck(job: dict, limit: int) -> bool:
     """任务是否已超时卡死 —— 卡死的任务不该再挡住新任务。"""
     return bool(job.get("running") and job.get("started")
                 and time.time() - job["started"] > limit)
-
 
 def _atomic_write(path: str, payload: dict) -> None:
     tmp = f"{path}.{uuid.uuid4().hex}.tmp"
@@ -310,7 +296,6 @@ def _atomic_write(path: str, payload: dict) -> None:
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, path)  # 原子替换，读方永远看到完整文件
-
 
 def _capture_theme_reasons() -> None:
     """囤当天的题材串（1 次问财请求）。 只能查最近交易日，过期不候"""
@@ -352,7 +337,6 @@ def _run_review(date: str, job_id: str) -> None:
                     _job["elapsed"] = int(time.time() - _job["started"])  # 收尾定格 elapsed（#17）
                 _job["finished_at"] = china_now().strftime("%Y-%m-%d %H:%M:%S") + " CST"
 
-
 def _origin_ok(request: Request) -> bool:
     """只允许本机来源触发昂贵任务，挡掉恶意网页的跨站 POST（#22）。"""
     ref = request.headers.get("origin") or request.headers.get("referer") or ""
@@ -360,11 +344,9 @@ def _origin_ok(request: Request) -> bool:
         return True  # 无 Origin（如 curl 本地调用）放行
     return (urlparse(ref).hostname or "") in _ALLOWED_HOSTS
 
-
 def _force_flag(request: Request) -> bool:
     """`?force=1` —— 已复盘过还要重跑。只认 POST 上的查询参数（本路由本身是 POST）。"""
     return str(request.query_params.get("force", "")).strip().lower() in ("1", "true", "yes")
-
 
 @app.post("/api/review/run")
 def api_run(request: Request, date: str | None = None):
@@ -409,7 +391,6 @@ def api_run(request: Request, date: str | None = None):
     threading.Thread(target=_run_review, args=(date, job_id), daemon=True).start()
     return {"running": True, "date": date, "job_id": job_id}
 
-
 @app.get("/api/cli/available")
 def api_cli_available():
     """哪些订阅 CLI 真的能用 —— **服务端是唯一权威**，UI 照这个渲染"""
@@ -435,7 +416,6 @@ def api_cli_available():
         "optedIn": sorted(_opted_in_clis()),
     }
 
-
 @app.get("/api/review/status")
 def api_status():
     with _lock:
@@ -444,7 +424,6 @@ def api_status():
         snap["elapsed"] = int(time.time() - snap["started"])
     snap.pop("started", None)
     return snap
-
 
 @app.post("/api/review/evaluate")
 def api_evaluate(request: Request, date: str):
@@ -457,7 +436,6 @@ def api_evaluate(request: Request, date: str):
         return JSONResponse({"error": str(exc)}, status_code=400)
     res = reflection.evaluate(date)
     return res or {"error": "无可评估数据（缺该日预测，或次一交易日数据尚未出）"}
-
 
 @app.get("/api/market/session")
 def api_market_session():
@@ -497,7 +475,6 @@ def api_market_session():
             "quotes_of": quotes_of, "is_today": is_today,
             "phase": phase, "label": label}
 
-
 @app.get("/api/market/live-emotion")
 def api_market_live_emotion():
     """今日**实时**打板情绪（盘面数据页用）。
@@ -506,7 +483,6 @@ def api_market_live_emotion():
     这条要的就是今天、随盘变化。两个块在界面上分别标清是哪一场。
     """
     return live_emotion.snapshot()
-
 
 @app.get("/api/market/overseas")
 def api_market_overseas():
@@ -517,7 +493,6 @@ def api_market_overseas():
     """
     return overseas.overseas_snapshot()
 
-
 @app.get("/api/review/dates")
 def api_review_dates():
     """跑过复盘的交易日，新→旧。给看板的历史入口用。
@@ -526,7 +501,6 @@ def api_review_dates():
     对一个复盘产品来说「翻回上周三看看」是刚需，却没有入口。
     """
     return {"dates": review_store.dates()}
-
 
 @app.get("/api/review/latest")
 def api_latest(date: Optional[str] = None):
@@ -548,10 +522,8 @@ def api_latest(date: Optional[str] = None):
         print(f"⚠️ 战绩统计失败：{type(exc).__name__}: {exc}")
     return JSONResponse(payload)
 
-
 # ==================== ③ 近 5 天热度 ====================
 _wk_lock = threading.Lock()
-
 
 def _wk_load():
     path = os.path.join(_WK_DIR, "latest.json")
@@ -560,7 +532,6 @@ def _wk_load():
             return json.load(fh)
     except (json.JSONDecodeError, OSError, FileNotFoundError):
         return None
-
 
 def _wk_fresh(cached: dict) -> bool:
     """缓存是否仍是最新已收盘交易日窗口（ #3）。判不了(网络失败)→按新鲜处理不硬刷"""
@@ -580,17 +551,14 @@ def _wk_fresh(cached: dict) -> bool:
         expected = None
     return expected is None or days[-1].get("date") == expected
 
-
 def _wk_good(w: dict) -> bool:
     """结果够格替换有效缓存吗（ #4：至少有一天真实取到数）"""
     return not w.get("error") and any((d.get("limit_up") is not None) for d in (w.get("days") or []))
-
 
 @app.get("/api/weekly")
 def api_weekly(request: Request, refresh: int = 0):
     """近 5 交易日热度 + 龙头谱系。缓存按交易日过期；单飞锁防并发重复计算（~40s）"""
     return _weekly(force=False)
-
 
 @app.post("/api/weekly/refresh")
 def api_weekly_refresh(request: Request):
@@ -598,7 +566,6 @@ def api_weekly_refresh(request: Request):
     if not _origin_ok(request):
         return JSONResponse({"error": "非法来源"}, status_code=403)
     return _weekly(force=True)
-
 
 def _weekly(force: bool):
     """近 5 天热度的真正实现。`force` **只能由 POST 处理器传入**，不接受查询参数。"""
@@ -635,7 +602,6 @@ def _weekly(force: bool):
     finally:
         _wk_lock.release()
 
-
 _chat_llm = None
 _ROLE_MAP = {"user": "human", "assistant": "ai"}
 
@@ -643,7 +609,6 @@ _ROLE_MAP = {"user": "human", "assistant": "ai"}
 _CHAT_MAX_MESSAGES = 40       # 超出部分只保留最近的（_chat 内还会再截到 12 轮）
 _CHAT_MAX_CHARS_EACH = 4000
 _CHAT_MAX_CHARS_TOTAL = 24000
-
 
 def _sanitize_messages(msgs: object) -> tuple[list, Optional[str]]:
     """校验并裁剪对话消息。返回 (清洗后的消息, 错误信息)。"""
@@ -665,17 +630,14 @@ def _sanitize_messages(msgs: object) -> tuple[list, Optional[str]]:
         out.append({"role": role, "content": content})
     return (out, None) if out else ([], "空消息")
 
-
 def _chat_model():
     global _chat_llm
     if _chat_llm is None:
         _chat_llm = make_llm(deep=False)
     return _chat_llm
 
-
 def _strip_html(s: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", " ", s or "")).strip()
-
 
 def _load_latest_json(dirpath: str) -> dict:
     path = os.path.join(dirpath, "latest.json")
@@ -684,7 +646,6 @@ def _load_latest_json(dirpath: str) -> dict:
             return json.load(fh)
     except (json.JSONDecodeError, OSError, FileNotFoundError):
         return {}
-
 
 def _review_context() -> str:
     d = _load_latest_json(_REVIEW_DIR)
@@ -696,6 +657,86 @@ def _review_context() -> str:
     for a in d.get("analysts", []):
         parts.append(f"【{a.get('title', '')}】\n{_strip_html(a.get('html', ''))}")
     return "\n\n".join(parts)[:8000]
+
+def _is_iwencai_skill(skill_id: str) -> bool:
+    if not skill_id:
+        return False
+    if skill_id.startswith("hithink-"):
+        return True
+    if skill_id == "bingchuan-skill" or skill_id.startswith("bingchuan-"):
+        return True
+    if skill_id in {"announcement-search", "news-search", "report-search"}:
+        return True
+    return False
+
+
+def _fetch_iwencai_context(query: str) -> str:
+    api_key = os.environ.get("IWENCAI_API_KEY", "").strip()
+    if not api_key or not query:
+        return ""
+    try:
+        import sys
+        vr = os.path.join(_HERE, "vr")
+        if os.path.isdir(vr) and vr not in sys.path:
+            sys.path.append(vr)
+        from iwencai_client import IwencaiClient
+        client = IwencaiClient(api_key=api_key, timeout=15)
+        client._session.trust_env = False
+        data = client.query_raw(query[:200], limit=10)
+        rows = data.get("datas") or []
+        if not rows:
+            return ""
+        lines = [f"问财查询：{query[:200]}"]
+        for row in rows:
+            line = " | ".join(f"{k}={v}" for k, v in row.items() if v not in (None, ""))
+            lines.append(line)
+        text = "\n".join(lines)
+        return f"\n\n【问财数据】\n{text[:5000]}"
+    except Exception as exc:
+        return f"\n\n【问财数据】\n问财查询失败：{type(exc).__name__}: {exc}"
+
+
+def _ask_context(skill_id: str | None = None, question: str = "") -> str:
+    try:
+        d = _load_latest_json(_REVIEW_DIR)
+        if d:
+            parts = [f"复盘交易日 {d.get('target_date', '')}", f"【明天关注点】\n{d.get('focus_md', '')}"]
+            if d.get("macro_sector"):
+                parts.append(f"【大板块本周】\n{d['macro_sector']}")
+            for a in d.get("analysts", []):
+                parts.append(f"【{a.get('title', '')}】\n{_strip_html(a.get('html', ''))}")
+            parts.insert(0, "【数据范围】以下复盘数据是当前分析可使用的全部事实材料，不允许再调用问财或其他外部数据源。")
+            text = "\n\n".join(parts)[:12000]
+            if _is_iwencai_skill(skill_id) and question:
+                text = text + _fetch_iwencai_context(question)
+            return text
+    except Exception:
+        pass
+    try:
+        from duanxian.data import get_emotion_metrics, get_market_facts, get_sentiment_data
+        date = china_today()
+        parts = [f"当前盘面数据（{date}）"]
+        try:
+            parts.append(f"【情绪面数据】\n{get_sentiment_data(date)}")
+        except Exception:
+            pass
+        try:
+            metrics_text, _ = get_emotion_metrics(date)
+            parts.append(f"【派生情绪指标】\n{metrics_text}")
+        except Exception:
+            pass
+        try:
+            facts_text, _ = get_market_facts(date)
+            parts.append(f"【市场事实表】\n{facts_text}")
+        except Exception:
+            pass
+        text = "\n\n".join(parts)[:8000]
+        if _is_iwencai_skill(skill_id) and question:
+            text = text + _fetch_iwencai_context(question)
+        return text if len(parts) > 1 else "（暂无可用盘面数据，请先生成复盘或检查网络/数据源。）"
+    except Exception:
+        return "（暂无可用盘面数据，请先生成复盘或检查网络/数据源。）"
+
 def _chat(context: str, role_desc: str, messages: list) -> dict:
     system = (
         f"你是{role_desc}。下面是刚才多 agent 产出的结论与数据，用户会就它追问或让你展开。\n"
@@ -711,17 +752,91 @@ def _chat(context: str, role_desc: str, messages: list) -> dict:
         return {"answer": strip_model_noise(ans)}
     except Exception as exc:  # noqa: BLE001
         return {"error": f"{type(exc).__name__}: {exc}"}
+@app.get("/api/skills")
+def api_list_skills():
+    skills = []
+    if _SKILLS_DIR.is_dir():
+        for entry in sorted(_SKILLS_DIR.iterdir()):
+            if entry.is_dir() and (entry / "SKILL.md").is_file():
+                skills.append({
+                    "id": entry.name,
+                    "name": entry.name,
+                    "path": str(entry / "SKILL.md"),
+                })
+    return JSONResponse({"skills": skills})
 
+def _load_skill_prompt(skill_id: str) -> str:
+    try:
+        p = _SKILLS_DIR / skill_id / "SKILL.md"
+        text = p.read_text(encoding="utf-8")
+        return text.strip()[:6000]
+    except OSError:
+        return ""
 
-@app.post("/api/review/chat")
-def api_review_chat(request: Request, body: dict = Body(...)):
+@app.post("/api/ask")
+def api_ask(request: Request, body: dict = Body(...)):
     if not _origin_ok(request):
         return JSONResponse({"error": "非法来源"}, status_code=403)
-    msgs, err = _sanitize_messages(body.get("messages"))
+    msgs, err = _sanitize_messages(body.get("messages", []))
     if err:
         return JSONResponse({"error": err}, status_code=400)
-    return _chat(_review_context(), "A 股短线复盘助手", msgs)
-
+    skill_id = (body.get("skill_id") or "").strip()
+    skill_prompt = _load_skill_prompt(skill_id) if skill_id else ""
+    last_question = ""
+    for m in reversed(msgs):
+        if m.get("role") == "user":
+            last_question = (m.get("content") or "").strip()
+            break
+    context = _ask_context(skill_id=skill_id, question=last_question)
+    if skill_prompt and _is_iwencai_skill(skill_id):
+        system = (
+            f"你是短线分析助手。下面会先给出环境约束，再给你 {skill_id} 框架，最后给出当前可用数据。\n"
+            "**环境约束优先于 skill 中的数据获取要求**，但当前已为你预填问财数据，请优先使用下面的【问财数据】。\n\n"
+            "【环境约束】"
+            "当前环境不允许你自行发起新的外部数据请求；你只能使用下面已经提供的盘面上下文与问财数据。"
+            "如果所需数据缺失，请在回答开头明确列出缺口，然后基于现有数据做有限结论，不要编造。"
+            "如果回答中需要外部数据才能成立，请直接说明这一点，不要假装已有依据。\n\n"
+            f"【{skill_id}】\n{skill_prompt}\n\n"
+            "【盘面上下文】\n"
+            f"{context}\n\n"
+            "请严格按上述约束完成分析："
+            "1) 先说明你使用了哪些现有数据；"
+            "2) 再给出短线结论；"
+            "3) 最后说明若补充哪些数据可提升置信度。"
+        )
+    elif skill_prompt:
+        system = (
+            f"你是短线分析助手。下面会先给出环境约束，再给你 {skill_id} 框架，最后给出当前可用数据。\n"
+            "**环境约束优先于 skill 中的数据获取要求**。\n\n"
+            "【环境约束】"
+            "当前环境不允许调用外部数据源，包括问财、iwencai、网络搜索、浏览器、文件读写或代码执行；"
+            "你只能使用下面【盘面上下文】里已经提供的数据。"
+            "如果所需数据缺失，请在回答开头明确列出缺口，然后基于现有数据做有限结论，不要编造。"
+            "如果回答中需要外部数据才能成立，请直接说明这一点，不要假装已有依据。\n\n"
+            f"【{skill_id}】\n{skill_prompt}\n\n"
+            "【盘面上下文】\n"
+            f"{context}\n\n"
+            "请严格按上述约束完成分析："
+            "1) 先说明你使用了哪些现有数据；"
+            "2) 再给出短线结论；"
+            "3) 最后说明若补充哪些数据可提升置信度。"
+        )
+    else:
+        system = (
+            "你是短线分析助手。请基于用户给出的信息和以下盘面数据做客观短线分析，不编造数据，若信息不足请明确说明。\n\n"
+            "【数据说明】以下盘面数据已经提供，请直接基于这些数据进行分析，不要再去调用问财或其他外部数据源。\n"
+            f"【盘面上下文】\n{context}\n\n"
+            "注意：如果数据不足，请明确说明缺少哪些具体数据，不要编造。"
+        )
+    try:
+        chain = [("system", system)] + [
+            (_ROLE_MAP.get(m["role"], "human"), m["content"])
+            for m in msgs[-12:]
+        ]
+        ans = _chat_model().invoke(chain).content
+        return {"answer": strip_model_noise(ans)}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"{type(exc).__name__}: {exc}"}
 
 def index():
     dist_index = os.path.join(_DIST, "index.html")
@@ -731,7 +846,6 @@ def index():
         {"error": "未找到前端构建产物，请先执行：cd frontend && npm install && npm run build"},
         status_code=503,
     )
-
 
 @app.get("/api/verification/menu")
 def api_verify_menu():
@@ -745,7 +859,6 @@ def api_verify_menu():
                     for m in METRICS],
     })
 
-
 @app.get("/api/verification/items")
 def api_verify_items(date: str):
     from duanxian import verification
@@ -755,7 +868,6 @@ def api_verify_items(date: str):
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"date": date, "items": verification.load_user_items(date)})
-
 
 @app.post("/api/verification/items")
 def api_verify_save(request: Request, date: str, body: dict = Body(...)):
@@ -770,7 +882,6 @@ def api_verify_save(request: Request, date: str, body: dict = Body(...)):
         return JSONResponse({"error": str(exc)}, status_code=400)
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
-
 
 def _mount_static() -> None:
     """挂静态资源 + SPA 兜底"""
@@ -793,7 +904,6 @@ def _mount_static() -> None:
 
     print(f"✓ React 构建产物已挂载（{_DIST}）")
 
-
 _mount_static()
 
 if __name__ == "__main__":
@@ -805,6 +915,9 @@ if __name__ == "__main__":
         # 有声地说出限制：不说的话，"少了几个可选项"看起来像 bug 而不是有意为之
         print(f"🔒 已禁用自动批准 CLI：{', '.join(_DISABLED_CLIS)}"
               f"（保留 {', '.join(sorted(_ALLOWED_CLI_KINDS))}）")
+    if "codex" in _ALLOWED_CLI_KINDS:
+        print("→ 复盘默认走 Codex CLI / skill，工作区按写保护执行，"
+              "不再自动走 Claude CLI。")
     if _opted_in_clis():
         # 放开了危险 CLI 就必须说清放开了什么、代价是什么 ——
         # 光印一句"保留 claude, codex"看不出后者是被特批进来的

@@ -40,9 +40,12 @@ _CLI_DEFS: dict[str, dict] = {
     "deepseek": {"bins": ["deepseek", "codewhale"], "delivery": "arg",
                  "build_args": lambda _: ["exec", "--auto"], "env": {}},
     # Codex：codex exec 默认纯文本（进度走 stderr、最终答案走 stdout）；`-` 从 stdin 读提示词，
-    # --skip-git-repo-check 跳过 git 检查（我们在临时目录跑）。复用本机 `codex login` 的订阅登录态。
+    # --skip-git-repo-check 跳过 git 检查；这里额外限制为工作区写保护，复用本机 `codex login` 的订阅登录态。
     "codex": {"bins": ["codex"], "delivery": "stdin",
-              "build_args": lambda _: ["exec", "--skip-git-repo-check", "-"], "env": {}},
+              "build_args": lambda _: [
+                  "exec", "--skip-git-repo-check",
+                  "-c", 'sandbox_permissions=["workspace-write"]', "-"
+              ], "env": {}},
 }
 
 _EXTRA_PATH_DIRS = [

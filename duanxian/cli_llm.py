@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # 复盘各节点的系统提示词由 prompt 包给（`prompts.py`），这里只给一句最小的角色约束。
 # CLI 是「一次性作答」模式，没有多轮消息结构，system 与 user 都拼进去。
+# Codex 现在加入默认安全白名单，跑复盘时优先按工作区写保护执行。
 _SYSTEM = "你是 A 股短线复盘助手。严格按用户给的格式与要求作答，不要寒暄、不要解释你在做什么。"
 
 # 环境变量名。故意不复用 server.py 的 `VIBE_ALLOW_UNSAFE_CLI` ——
@@ -70,6 +71,12 @@ def _check_available(kind: str) -> None:
     find_bin = getattr(mod, "_find_bin", None)
     installed = bool(find_bin) and any(find_bin(b) for b in (known.get(kind) or []))
     if installed:   # 装着、只是被闸摘掉了 —— 这时候报"未检测到"是骗人
+        if kind == "codex":
+            raise LlmConfigError(
+                f"复盘要用「{kind}」，但它被服务端 CLI 运行时摘掉了。"
+                f"请确认服务端已把 codex 放进 CLI 白名单；"
+                f"或者用 `python main.py` 独立跑复盘。"
+            )
         raise LlmConfigError(
             f"复盘要用「{kind}」，但它被服务端的 CLI 白名单摘掉了。"
             f"在 server 上跑请同时设 VIBE_ALLOW_UNSAFE_CLI={kind}"
@@ -88,9 +95,9 @@ def _load_run_cli():
 
 
 def wanted_kind() -> str | None:
-    """使用者要用 CLI 跑复盘；要的话用哪个。没设 → None（走 API key 那条）"""
+    """复盘默认走 Codex CLI；显式设置 VIBE_LLM_CLI 时可覆盖。"""
     v = os.environ.get(ENV_KIND, "").strip()
-    return v or None
+    return v or "codex"
 
 
 def make_cli_llm(deep: bool = False) -> CliLlm:
@@ -98,7 +105,9 @@ def make_cli_llm(deep: bool = False) -> CliLlm:
 
     CLI 没有 quick / deep 两档模型可选（订阅就是那一个模型），`deep` 只用于日志标注。
     """
-    kind = wanted_kind()
+    kind = wanted_kind() or "codex"
     if not kind:
         raise RuntimeError(f"{ENV_KIND} 没设置，不该走到这里")
+    if kind != "codex":
+        logger.info("复盘 LLM 使用 CLI: %s", kind)
     return CliLlm(kind, label=f"{kind}/{'deep' if deep else 'quick'}")
